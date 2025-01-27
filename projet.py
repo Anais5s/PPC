@@ -9,6 +9,27 @@ class State:
     Green = 1
     Red = 2
 
+PRIORITY_RULES = {
+    # Pour la source 0
+    (0, 1): [1],     
+    (0, 2): [1, 3],        
+    (0, 3): [1, 2, 3],    
+
+    # Pour la source 1
+    (1, 2): [2],           
+    (1, 3): [2, 0],        
+    (1, 0): [2, 3, 0],     
+
+    # Pour la source 2
+    (2, 3): [3],           
+    (2, 0): [3, 1],       
+    (2, 1): [3, 0, 1],     
+
+    # Pour la source 3
+    (3, 0): [0],           
+    (3, 1): [0, 2],        
+    (3, 2): [0, 1, 2],
+}
 
 feux = multiprocessing.Array('i', [State.Red for _ in range(4)])
 priority_queue = multiprocessing.Value("i", -1)
@@ -47,7 +68,7 @@ def priority_traffic_gen(simul,lights_pid, priority_queue):
             priority_queue.value = source
             os.kill(lights_pid, signal.SIGUSR1)
             print(f"Signal envoyé à lights pour la file {source}")
-        except ExistentialError:
+        except sysv_ipc.ExistentialError:
             print("Cannot connect to message queue terminating.")
             sys.exit(1)
         
@@ -98,38 +119,100 @@ def lights(simul, feux):
                     feux[i] = State.Red 
             print(f"Mode priorité activé pour la voie {priority_road}")
             time.sleep(5)
+            priority_queue.value=-1
             print("Retour au cycle normal")
 
 def coordinator(simul,feux):
     try:
         queues = [sysv_ipc.MessageQueue(base_cle + i) for i in range(4)]
-    except ExistentialError:
+    except sysv_ipc.ExistentialError :
         print("Cannot connect to message queues, terminating.")
         sys.exit(1)
     while simul.value:
         while feux[0]==State.Green and feux[2]==State.Green :
-            try:
-                voiture1, _ = queues[0].receive(block=False)
-                voiture2, _ = queues[2].receive(block=False)
-                voiture = random.choice([voiture1.decode(),voiture2.decode()])
-                print(f"Message reçu sur la file 0 ou 2: {voiture}")
-            except sysv_ipc.BusyError:
-                time.sleep(0.1)
-        while feux[1]==State.Green and feux[3]==State.Green :
-            try:
-                voiture1, _ = queues[1].receive(block=False)
-                voiture2, _ = queues[3].receive(block=False)
-                voiture = random.choice([voiture1.decode(),voiture2.decode()])
-                print(f"Message reçu sur la file 1 ou 3: {voiture}")
-            except sysv_ipc.BusyError:
-                time.sleep(0.1)
-        for i in range (4):
-            while feux[i]==State.Green and (feux[(i+1)%4]==State.Red and feux[(i+2)%4]==State.Red and feux[(i-1)%4]==State.Red) :
+            messages = []
+            msg0=None
+            msg2=None
+            if msg0==None:
                 try:
-                    voiture, _ = queues[i].receive(block=False)
-                    print(f"Message reçu sur la file {i} en mode prioritaire: {voiture.decode()}")
+                    msg0, _ = queues[0].receive(block=False)
+                    messages.append((0, int(msg0.decode())))
+                    time.sleep(random.uniform(1,3))
                 except sysv_ipc.BusyError:
-                    time.sleep(0.1)
+                    pass
+            if msg2==None:
+                try:
+                    msg2, _ = queues[2].receive(block=False)
+                    messages.append((2, int(msg2.decode())))
+                except sysv_ipc.BusyError:
+                    pass
+                    
+            if len(messages) >= 2:
+                source1, dest1 = messages[0]
+                source2, dest2 = messages[1]
+                    
+                if source2 in PRIORITY_RULES.get((source1, dest1), []):
+                    print(f"Message reçu sur la file {source2}: {dest2}")
+                    queues[source2].send(str(dest2).encode())
+                    msg2=None
+                    time.sleep(random.uniform(1,3))
+                else:
+                    # La première voiture a priorité
+                    print(f"Message reçu sur la file {source1}: {dest1}")
+                    queues[source1].send(str(dest1).encode())
+                    msg0=None
+                    time.sleep(random.uniform(1,3))
+            elif messages:
+                # S'il n'y a qu'un seul message, le traiter
+                print(f"Message reçu sur la file {messages[0][0]}: {messages[0][1]}")
+                
+            time.sleep(0.1)
+            
+        while feux[1]==State.Green and feux[3]==State.Green :
+            messages = []
+            msg0=None
+            msg2=None
+            if msg0==None:
+                try:
+                    msg0, _ = queues[0].receive(block=False)
+                    messages.append((0, int(msg0.decode())))
+                except sysv_ipc.BusyError:
+                    pass
+            if msg2==None:
+                try:
+                    msg2, _ = queues[2].receive(block=False)
+                    messages.append((2, int(msg2.decode())))
+                except sysv_ipc.BusyError:
+                    pass
+                    
+            if len(messages) >= 2:
+                source1, dest1 = messages[0]
+                source2, dest2 = messages[1]
+                    
+                if source2 in PRIORITY_RULES.get((source1, dest1), []):
+                    print(f"Message reçu sur la file {source2}: {dest2}")
+                    queues[source2].send(str(dest2).encode())
+                    msg2=None
+                    time.sleep(random.uniform(1,3))
+                else:
+                    # La première voiture a priorité
+                    print(f"Message reçu sur la file {source1}: {dest1}")
+                    queues[source1].send(str(dest1).encode())
+                    msg0=None
+                    time.sleep(random.uniform(1,3))
+            elif messages:
+                # S'il n'y a qu'un seul message, le traiter
+                print(f"Message reçu sur la file {messages[0][0]}: {messages[0][1]}")
+                
+            time.sleep(0.1)
+        
+        while priority_queue.value >= 0:
+            try:
+                mess, _ = queues[priority_queue.value].receive(block=False)
+                print(f"Message reçu sur la file {priority_queue.value}: {mess.decode()}")
+                time.sleep(random.uniform(1,3))
+            except sysv_ipc.BusyError:
+                pass
 
   
 if __name__ == "__main__":
