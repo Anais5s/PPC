@@ -8,7 +8,7 @@ class State:
     Green = 1
     Red = 2
 
-feux = feux = multiprocessing.Array('i', [State.Red for _ in range(4)])
+feux = multiprocessing.Array('i', [State.Red for _ in range(4)])
 mqs=[]
 
 base_cle=1000
