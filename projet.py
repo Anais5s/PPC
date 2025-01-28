@@ -3,6 +3,7 @@ import random
 import time
 import signal
 import sysv_ipc
+import sys
 import os
 
 class State:
@@ -37,13 +38,14 @@ priority_queue = multiprocessing.Value("i", -1)
 lock = multiprocessing.Lock()
 
 mqs=[]
-base_cle=1000 #pour tomber sur une cle libre
+base_cle=1000 # Pour tomber sur une clé libre
 for i in range (4):
     mq = sysv_ipc.MessageQueue(base_cle+i, sysv_ipc.IPC_CREAT)
     mqs.append(mq)
 
-def normal_traffic_gen(simul):#simulates the generation of normal traffic. For each generated vehicle, it chooses 
-#source and destination road sections randomly or according to some predefined criteria.
+def normal_traffic_gen(simul):
+    '''Simulates the generation of normal traffic.
+    For each generated vehicle, it chooses source and destination road sections randomly or according to some predefined criteria.'''
     while simul.value:
         time.sleep(random.uniform(0.1,3))
         source=random.randint(0,3)
@@ -54,11 +56,11 @@ def normal_traffic_gen(simul):#simulates the generation of normal traffic. For e
             print("Cannot connect to message queue terminating.")
             sys.exit(1)
         mq.send(str(dest).encode())
-        print(f"voiture allant de {source} a {dest}")
+        print(f"Voiture allant de {source} à {dest}")
 
 def priority_traffic_gen(simul,lights_pid, priority_queue): 
-#simulates the generation of high-priority traffic. For each generated vehicle, it chooses source and destination
-#road sections randomly or according to some predefined criteria.
+    '''Simulates the generation of high-priority traffic.
+    For each generated vehicle, it chooses source and destination road sections randomly or according to some predefined criteria.'''
     while simul.value:
         time.sleep(random.uniform(5,15))
         source=random.randint(0,3)
@@ -66,7 +68,7 @@ def priority_traffic_gen(simul,lights_pid, priority_queue):
         try:
             mq = sysv_ipc.MessageQueue(base_cle+source)
             mq.send(str(dest).encode())
-            print(f"vehicule prioritaire allant de {source} a {dest}")
+            print(f"Vehicule prioritaire allant de {source} à {dest}")
             priority_queue.value = source
             os.kill(lights_pid, signal.SIGUSR1)
             print(f"Signal envoyé à lights pour la file {source}")
@@ -74,10 +76,9 @@ def priority_traffic_gen(simul,lights_pid, priority_queue):
             print("Cannot connect to message queue terminating.")
             sys.exit(1)
         
-
 def handle_priority_signal(signum, frame):
-    # Cette fonction sera appelée quand le signal SIGUSR1 est reçu
-    # On ne met rien dedans car on veut juste interrompre le sleep
+    '''Cette fonction sera appelée quand le signal SIGUSR1 est reçu
+    On ne met rien dedans car on veut juste interrompre le sleep'''
     raise InterruptedError
 
 def set_lights(states):
@@ -96,7 +97,7 @@ def handle_priority():
     print("Retour au cycle normal")
 
 def lights(simul, feux):
-    # Enregistrement du gestionnaire de signal
+    '''Enregistrement du gestionnaire de signal'''
     signal.signal(signal.SIGUSR1, handle_priority_signal)
         # Définition des états normaux des feux
     NORMAL_STATES = [
@@ -183,7 +184,7 @@ def coordinator(simul, feux):
 
 
   
-if __name__ == "__main__":
+if __name__ == "__main__": # Faire des threads pour certaines tâches au lieu de process (peut-être trop overkill ?)
     simul=multiprocessing.Value("b",True)
     processes=[]
     pn = multiprocessing.Process(target=normal_traffic_gen, args=(simul,))
