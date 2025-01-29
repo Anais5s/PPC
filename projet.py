@@ -56,6 +56,7 @@ def normal_traffic_gen(simul):
             print("Cannot connect to message queue terminating.")
             sys.exit(1)
         mq.send(str(dest).encode())
+        #envoie tcp Mathis
         print(f"Voiture allant de {source} à {dest}")
 
 def priority_traffic_gen(simul,lights_pid, priority_queue): 
@@ -68,6 +69,7 @@ def priority_traffic_gen(simul,lights_pid, priority_queue):
         try:
             mq = sysv_ipc.MessageQueue(base_cle+source)
             mq.send(str(dest).encode())
+            #envoie tcp Mathis
             print(f"Vehicule prioritaire allant de {source} à {dest}")
             priority_queue.value = source
             os.kill(lights_pid, signal.SIGUSR1)
@@ -85,12 +87,14 @@ def set_lights(states):
     with lock:
         for i, state in enumerate(states):
             feux[i] = state
+        #envoi tcp Mathis
 
 def handle_priority():
     priority_road = priority_queue.value
     with lock:
         for i in range(4):
             feux[i] = State.Green if i == priority_road else State.Red
+        #envoi tcp Mathis
     print(f"Mode priorité activé pour la voie {priority_road}")
     time.sleep(5)
     priority_queue.value = -1
@@ -104,7 +108,6 @@ def lights(simul, feux):
         ([State.Green, State.Red, State.Green, State.Red], "lumiere 0 et 2 vertes"),
         ([State.Red, State.Green, State.Red, State.Green], "lumieres 1 et 3 vertes")
     ]
-
     while simul.value:
         for states, message in NORMAL_STATES:
             try:
@@ -147,22 +150,28 @@ def coordinator(simul, feux):
             if source2 in PRIORITY_RULES.get((source1, dest1), []):
                 print(f"Message reçu sur la file {source2}: {dest2}")
                 msg1=None
-                time.sleep(random.uniform(1,3))
+                #envoi tcp Mathis
+                time.sleep(1)
             elif source1 in PRIORITY_RULES.get((source2, dest2), []):
                 # La première voiture a priorité
                 print(f"Message reçu sur la file {source1}: {dest1}")
                 msg0=None
-                time.sleep(random.uniform(1,3))
+                #envoi tcp Mathis
+                time.sleep(1)
             else:
                 print(f"Les deux voitures ont pu passer")
                 print(f"Message reçu sur la file {source1}: {dest1} et sur la file {source2}: {dest2}")
                 msg0=None
                 msg1=None
-                time.sleep(random.uniform(1,3))
+                #envoi tcp Mathis
+                time.sleep(1)
 
         elif messages:
             # S'il n'y a qu'un seul message, le traiter
             print(f"Message reçu sur la file {messages[0][0]}: {messages[0][1]}")
+            msg0=None
+            #envoi tcp Mathis
+            time.sleep(1)
                 
         time.sleep(0.1)  
 
@@ -176,7 +185,8 @@ def coordinator(simul, feux):
             try:
                 mess, _ = queues[priority_queue.value].receive(block=False)
                 print(f"Message reçu sur la file {priority_queue.value}: {mess.decode()}")
-                time.sleep(random.uniform(1, 3))
+                #envoi tcp Mathis
+                time.sleep(1)
             except sysv_ipc.BusyError:
                 pass
 
