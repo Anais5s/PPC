@@ -181,9 +181,10 @@ def coordinator(simul, feux, sock):
                 time.sleep(1)
 
         elif messages:
-            # S'il n'y a qu'un seul message, le traiter
-            print(f"Message reçu sur la file {messages[0][0]}: {messages[0][1]}")
-            msg_passage = ('passage', source1, dest1)
+            # S'il n'y a qu'un seul message, le traiter 
+            source, dest = messages[0]
+            print(f"Message reçu sur la file {source}: {dest}")
+            msg_passage = ('passage', source, dest)
             sock.sendall(pickle.dumps(msg_passage))
             msg0=None
             time.sleep(1)
