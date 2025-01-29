@@ -11,14 +11,6 @@ import pickle  # Pour sérialiser les tuples avant envoi
 HOST = "localhost"
 PORT = 6666
 
-#msg_creation = ('création', 0)
-#msg_passage = ('passage', 0, 1)
-#msg_feu = ('feu', 1)
-
-#sock.sendall(pickle.dumps(msg_passage))
-#sock.close()
-
-
 class State:
     Green = 1
     Red = 2
@@ -65,15 +57,15 @@ def normal_traffic_gen(simul,sock):
         dest=random.choice([x for x in range(0, 4) if x != source])
         try:
             mq = sysv_ipc.MessageQueue(base_cle+source)
+            mq.send(str(dest).encode())
+            msg_creation = ('création', source)
+            sock.sendall(pickle.dumps(msg_creation))
+            print(f"Voiture allant de {source} à {dest}")
         except sysv_ipc.ExistentialError:
             print("Cannot connect to message queue terminating.")
             sys.exit(1)
-        mq.send(str(dest).encode())
-        msg_creation = ('création', source)
-        sock.sendall(pickle.dumps(msg_creation))
-        print(f"Voiture allant de {source} à {dest}")
 
-def priority_traffic_gen(simul,lights_pid, priority_queue): 
+def priority_traffic_gen(simul,lights_pid, priority_queue, sock): 
     '''Simulates the generation of high-priority traffic.
     For each generated vehicle, it chooses source and destination road sections randomly or according to some predefined criteria.'''
     while simul.value:
@@ -83,7 +75,8 @@ def priority_traffic_gen(simul,lights_pid, priority_queue):
         try:
             mq = sysv_ipc.MessageQueue(base_cle+source)
             mq.send(str(dest).encode())
-            #envoie tcp Mathis
+            msg_creation = ('création', source)
+            sock.sendall(pickle.dumps(msg_creation))
             print(f"Vehicule prioritaire allant de {source} à {dest}")
             priority_queue.value = source
             os.kill(lights_pid, signal.SIGUSR1)
@@ -97,24 +90,26 @@ def handle_priority_signal(signum, frame):
     On ne met rien dedans car on veut juste interrompre le sleep'''
     raise InterruptedError
 
-def set_lights(states):
+def set_lights(states,feux,sock):
     with lock:
         for i, state in enumerate(states):
             feux[i] = state
-        #envoi tcp Mathis
+            msg_feu = ('feu', i, state)
+            sock.sendall(pickle.dumps(msg_feu))
 
-def handle_priority():
+def handle_priority(feux,sock):
     priority_road = priority_queue.value
     with lock:
         for i in range(4):
             feux[i] = State.Green if i == priority_road else State.Red
-        #envoi tcp Mathis
+            msg_feu = ('feu', i, feux[i])
+            sock.sendall(pickle.dumps(msg_feu))
     print(f"Mode priorité activé pour la voie {priority_road}")
     time.sleep(5)
     priority_queue.value = -1
     print("Retour au cycle normal")
 
-def lights(simul, feux):
+def lights(simul, feux,sock):
     '''Enregistrement du gestionnaire de signal'''
     signal.signal(signal.SIGUSR1, handle_priority_signal)
         # Définition des états normaux des feux
@@ -125,22 +120,22 @@ def lights(simul, feux):
     while simul.value:
         for states, message in NORMAL_STATES:
             try:
-                set_lights(states)
+                set_lights(states,feux,sock)
                 print(message)
                 time.sleep(5)
             except InterruptedError:
-                handle_priority()
+                handle_priority(feux,sock)
                 break
 
 
-def coordinator(simul, feux):
+def coordinator(simul, feux, sock):
     try:
         queues = [sysv_ipc.MessageQueue(base_cle + i) for i in range(4)]
     except sysv_ipc.ExistentialError:
         print("Cannot connect to message queues, terminating.")
         sys.exit(1)
     
-    def process_messages(active_feux):
+    def process_messages(active_feux,sock):
         messages = []
         msg0=None
         msg1=None
@@ -163,43 +158,50 @@ def coordinator(simul, feux):
                    
             if source2 in PRIORITY_RULES.get((source1, dest1), []):
                 print(f"Message reçu sur la file {source2}: {dest2}")
+                msg_passage = ('passage', source2, dest2)
+                sock.sendall(pickle.dumps(msg_passage))
                 msg1=None
-                #envoi tcp Mathis
                 time.sleep(1)
             elif source1 in PRIORITY_RULES.get((source2, dest2), []):
                 # La première voiture a priorité
                 print(f"Message reçu sur la file {source1}: {dest1}")
+                msg_passage = ('passage', source1, dest1)
+                sock.sendall(pickle.dumps(msg_passage))
                 msg0=None
-                #envoi tcp Mathis
                 time.sleep(1)
             else:
                 print(f"Les deux voitures ont pu passer")
                 print(f"Message reçu sur la file {source1}: {dest1} et sur la file {source2}: {dest2}")
+                msg_passage = ('passage', source1, dest1)
+                sock.sendall(pickle.dumps(msg_passage))
+                msg_passage = ('passage', source2, dest2)
+                sock.sendall(pickle.dumps(msg_passage))
                 msg0=None
                 msg1=None
-                #envoi tcp Mathis
                 time.sleep(1)
 
         elif messages:
             # S'il n'y a qu'un seul message, le traiter
             print(f"Message reçu sur la file {messages[0][0]}: {messages[0][1]}")
+            msg_passage = ('passage', source1, dest1)
+            sock.sendall(pickle.dumps(msg_passage))
             msg0=None
-            #envoi tcp Mathis
             time.sleep(1)
                 
         time.sleep(0.1)  
 
     while simul.value:
         if feux[0] == State.Green and feux[2] == State.Green:
-            process_messages([0, 2])
+            process_messages([0, 2], sock)
         elif feux[1] == State.Green and feux[3] == State.Green:
-            process_messages([1, 3])
+            process_messages([1, 3], sock)
         
         while priority_queue.value >= 0:
             try:
                 mess, _ = queues[priority_queue.value].receive(block=False)
                 print(f"Message reçu sur la file {priority_queue.value}: {mess.decode()}")
-                #envoi tcp Mathis
+                msg_passage = ('passage', priority_queue.value, mess.decode())
+                sock.sendall(pickle.dumps(msg_passage))
                 time.sleep(1)
             except sysv_ipc.BusyError:
                 pass
@@ -220,12 +222,12 @@ if __name__ == "__main__": # Faire des threads pour certaines tâches au lieu de
     processes=[]
     pn = multiprocessing.Process(target=normal_traffic_gen, args=(simul,client_socket))
     processes.append(pn)
-    pl = multiprocessing.Process(target=lights, args=(simul,feux))
+    pl = multiprocessing.Process(target=lights, args=(simul,feux,client_socket))
     pl.start()
     lights_pid = pl.pid
-    pp = multiprocessing.Process(target=priority_traffic_gen, args=(simul,lights_pid,priority_queue))
+    pp = multiprocessing.Process(target=priority_traffic_gen, args=(simul,lights_pid,priority_queue,client_socket))
     processes.append(pp)
-    pc = multiprocessing.Process(target=coordinator, args=(simul,feux))
+    pc = multiprocessing.Process(target=coordinator, args=(simul,feux, client_socket))
     processes.append(pc)
     for p in processes:
         p.start()
