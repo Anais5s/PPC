@@ -6,6 +6,24 @@ import sysv_ipc
 import sys
 import os
 
+import socket
+import pickle  # Pour sérialiser les tuples avant envoi
+
+# Création du socket TCP
+sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+sock.connect(("127.0.0.1", 12345))
+
+# Exemple de messages sous forme de tuples
+msg_creation = ('création', 0)
+msg_passage = ('passage', 0, 1)
+msg_feu = ('feu', 1)
+
+# Sérialisation et envoi
+sock.sendall(pickle.dumps(msg_passage))  # On envoie un message exemple
+
+sock.close()
+
+
 class State:
     Green = 1
     Red = 2
