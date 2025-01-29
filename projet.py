@@ -5,23 +5,18 @@ import signal
 import sysv_ipc
 import sys
 import os
-
 import socket
 import pickle  # Pour sérialiser les tuples avant envoi
 
-# Création du socket TCP
-sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-sock.connect(("127.0.0.1", 12345))
+HOST = "localhost"
+PORT = 6666
 
-# Exemple de messages sous forme de tuples
-msg_creation = ('création', 0)
-msg_passage = ('passage', 0, 1)
-msg_feu = ('feu', 1)
+#msg_creation = ('création', 0)
+#msg_passage = ('passage', 0, 1)
+#msg_feu = ('feu', 1)
 
-# Sérialisation et envoi
-sock.sendall(pickle.dumps(msg_passage))  # On envoie un message exemple
-
-sock.close()
+#sock.sendall(pickle.dumps(msg_passage))
+#sock.close()
 
 
 class State:
@@ -61,7 +56,7 @@ for i in range (4):
     mq = sysv_ipc.MessageQueue(base_cle+i, sysv_ipc.IPC_CREAT)
     mqs.append(mq)
 
-def normal_traffic_gen(simul):
+def normal_traffic_gen(simul,sock):
     '''Simulates the generation of normal traffic.
     For each generated vehicle, it chooses source and destination road sections randomly or according to some predefined criteria.'''
     while simul.value:
@@ -74,7 +69,8 @@ def normal_traffic_gen(simul):
             print("Cannot connect to message queue terminating.")
             sys.exit(1)
         mq.send(str(dest).encode())
-        #envoie tcp Mathis
+        msg_creation = ('création', source)
+        sock.sendall(pickle.dumps(msg_creation))
         print(f"Voiture allant de {source} à {dest}")
 
 def priority_traffic_gen(simul,lights_pid, priority_queue): 
@@ -214,8 +210,15 @@ def coordinator(simul, feux):
   
 if __name__ == "__main__": # Faire des threads pour certaines tâches au lieu de process (peut-être trop overkill ?)
     simul=multiprocessing.Value("b",True)
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server_socket:
+        server_socket.bind((HOST, PORT))
+        server_socket.listen(2)
+        print("En attente d'une connexion client...")
+        client_socket, address = server_socket.accept() 
+        print(f"Client connecté : {address}")
+        client_socket.setblocking(True)
     processes=[]
-    pn = multiprocessing.Process(target=normal_traffic_gen, args=(simul,))
+    pn = multiprocessing.Process(target=normal_traffic_gen, args=(simul,client_socket))
     processes.append(pn)
     pl = multiprocessing.Process(target=lights, args=(simul,feux))
     pl.start()
@@ -232,3 +235,4 @@ if __name__ == "__main__": # Faire des threads pour certaines tâches au lieu de
         p.join()
     for mq in mqs:
         mq.remove()
+    client_socket.close()
