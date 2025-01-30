@@ -1,13 +1,19 @@
 import pygame
 import sys
+import socket
+import pickle
+from multiprocessing import Process
+import sysv_ipc
 
 pygame.init() # Initialisation de Pygame
+
+HOST = "127.0.0.1"  # Adresse du serveur
+PORT = 6674         # Doit être le même que le serveur
 
 # Création de la fenêtre
 SCREEN_WIDTH, SCREEN_HEIGHT = 600, 600 # Dimensions de la fenêtre
 SCREEN = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
 pygame.display.set_caption("Projet PPC")
-
 
 class Color: # Couleurs
     whith = (255, 255, 255)
@@ -15,6 +21,7 @@ class Color: # Couleurs
     red = (255, 0, 0)
     green = (0, 255, 0)
     gray = (200, 200, 200)
+
 
 # Classes
 class TrafficLight:
@@ -33,6 +40,7 @@ class TrafficLight:
         """Dessiner le feu de circulation."""
         # pygame.draw.rect(screen, Color.black, (self.x, self.y, self.width, self.height))
         pygame.draw.circle(screen, self.state, (self.x + self.width // 2, self.y + self.height // 2), self.width // 2)
+
 
 class Car:
     def __init__(self, x, y, speed, direction):
@@ -60,8 +68,50 @@ class Car:
         """Dessiner la voiture."""
         pygame.draw.rect(screen, Color.black, (self.x, self.y, self.width, self.height))
 
+# Fonctions
+def reception(client_socket):
+    while True:
+        try:
+            data = client_socket.recv(1024)  # Taille maximale des données reçues
+            
+            if not data:
+                break  # Si aucune donnée, on arrête la boucle
+            
+            message = pickle.loads(data)  # Désérialisation du message reçu
+            print(f"Message reçu du serveur: {message}")
+            mq.send(data)
+
+        except Exception as e:
+            print(f"Erreur de réception : {e}")
+            break  # Sortir en cas d'erreu
+
+    print("Connexion fermée par le serveur.")
+    client_socket.close() # Ferme la connexion après l'envoi
+
+
+
 if __name__ == "__main__":
-# Création des objets
+    #---------------------------------------------
+    # Création du socket client
+    client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+
+    try:
+        client_socket.connect((HOST, PORT))
+        print("Client connecté")
+    except Exception as e:
+        print(f"Connexion au serveur échouée : {e}")
+        client_socket.close()
+
+    mqs=[]
+    base_cle = 128
+    mq = sysv_ipc.MessageQueue(base_cle, sysv_ipc.IPC_CREAT)
+    #mq.remove()
+
+    p_reception = Process(target=reception, args=(client_socket,))
+    p_reception.start()
+    # -----------------------------------------------
+
+    # Création des objets
     Feux = [
         TrafficLight(SCREEN_WIDTH // 2 - 80, SCREEN_HEIGHT // 2 - 140),  # Feu en haut
         TrafficLight(SCREEN_WIDTH // 2 + 100, SCREEN_HEIGHT // 2 - 100), # Feu à droite
@@ -69,27 +119,48 @@ if __name__ == "__main__":
         TrafficLight(SCREEN_WIDTH // 2 - 120, SCREEN_HEIGHT // 2 + 50)   # Feu à gauche
     ]
 
-    cars = [
-        Car(100, SCREEN_HEIGHT // 2 - 10, 4, "horizontal"),
-        Car(SCREEN_WIDTH // 2 + 10, 200, 2, "vertical")
+    Roads = [
+        [],
+        [],
+        [],
+        []
     ]
 
     clock = pygame.time.Clock() # Gérer les FPS
     while True: # Boucle principale de l'affichage
+        data = (None, None, None) # Réinitialisation de data
+        try:
+            # Appel non-bloquant avec blocking=False
+            message, t = mq.receive(block=False)
+            data = pickle.loads(message)
+            print(data)
+        except sysv_ipc.BusyError:
+            pass             # Si aucune donnée n'est disponible, continuer la boucle sans bloquer
+
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 pygame.quit()
-                sys.exit()
+                break
 
-            if event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_SPACE:
-                    # Changer l'état de tous les feux
-                    for feu in Feux:
-                        feu.toggle()
+            # if event.type == pygame.KEYDOWN:
+            #     if event.key == pygame.K_SPACE:
+            #         # Changer l'état de tous les feux
+            #         for feu in Feux:
+            #             feu.toggle()
 
         # Mise à jour des objets
-        for car in cars:
-            car.move()
+        if data[0]=='feu':
+            position_feu = data[1]
+            if data[2]==1:
+                Feux[position_feu].state=Color.green
+            else:
+                Feux[position_feu].state=Color.red
+        
+        Roads[0].append(Car(100, SCREEN_HEIGHT // 2 - 10, 4, "horizontal"))
+        Roads[1].append(Car(SCREEN_WIDTH // 2 + 10, 200, 2, "vertical"))
+
+        # for car in Cars:
+        #     car.move()
 
         SCREEN.fill(Color.whith) # Background
 
@@ -102,8 +173,13 @@ if __name__ == "__main__":
             feu.draw(SCREEN)
 
         # Dessiner les voitures
-        for car in cars:
-            car.draw(SCREEN)
+        for road in Roads:
+            for car in road:
+                car.draw(SCREEN)
 
         pygame.display.flip() # Mettre à jour le display
         clock.tick(60) # 60 FPS
+
+    p_reception.join()
+    client_socket.close()
+    sys.exit()

@@ -25,4 +25,4 @@ class TCP:
 
 ('passage', 0)
 ('création', 0, 1)
-('feu', 1)
+('feu', 1, 1)
