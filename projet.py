@@ -9,7 +9,7 @@ import socket
 import pickle  # Pour sérialiser les tuples avant envoi
 
 HOST = "localhost"
-PORT = 6666
+PORT = 6665
 
 class State:
     Green = 1
@@ -57,8 +57,9 @@ def normal_traffic_gen(simul,sock):
         dest=random.choice([x for x in range(0, 4) if x != source])
         try:
             mq = sysv_ipc.MessageQueue(base_cle+source)
-            mq.send(str(dest).encode())
-            msg_creation = ('création', source)
+            message=(dest,0)
+            mq.send(pickle.dumps(message))
+            msg_creation = ('creation_normal', source)
             sock.sendall(pickle.dumps(msg_creation))
             print(f"Voiture allant de {source} à {dest}")
         except sysv_ipc.ExistentialError:
@@ -69,13 +70,14 @@ def priority_traffic_gen(simul,lights_pid, priority_queue, sock):
     '''Simulates the generation of high-priority traffic.
     For each generated vehicle, it chooses source and destination road sections randomly or according to some predefined criteria.'''
     while simul.value:
-        time.sleep(random.uniform(5,15))
+        time.sleep(random.uniform(10,20))
         source=random.randint(0,3)
         dest=random.choice([x for x in range(0, 4) if x != source])
         try:
             mq = sysv_ipc.MessageQueue(base_cle+source)
-            mq.send(str(dest).encode())
-            msg_creation = ('création', source)
+            message=(dest,1)
+            mq.send(pickle.dumps(message))
+            msg_creation = ('creation_priorite', source)
             sock.sendall(pickle.dumps(msg_creation))
             print(f"Vehicule prioritaire allant de {source} à {dest}")
             priority_queue.value = source
@@ -96,6 +98,8 @@ def set_lights(states,feux,sock):
             feux[i] = state
             msg_feu = ('feu', i, state)
             sock.sendall(pickle.dumps(msg_feu))
+            print(f"On envoie un feu {i} avec la state {feux[i]}")
+
 
 def handle_priority(feux,sock):
     priority_road = priority_queue.value
@@ -104,8 +108,22 @@ def handle_priority(feux,sock):
             feux[i] = State.Green if i == priority_road else State.Red
             msg_feu = ('feu', i, feux[i])
             sock.sendall(pickle.dumps(msg_feu))
+            print(f"On envoie un feu {i} avec la state {feux[i]}")
     print(f"Mode priorité activé pour la voie {priority_road}")
-    time.sleep(5)
+    queue = sysv_ipc.MessageQueue(base_cle + priority_road)
+    while True:
+        try:
+            mess, _ = queue.receive(block=False)
+            data = pickle.loads(mess)
+            print(f"Message reçu sur la file {priority_queue.value}: {data[0]}")
+            msg_passage = ('passage', priority_queue.value, data[0])
+            sock.sendall(pickle.dumps(msg_passage))
+            if data[1] == 1:  # Vérifier si la voiture prioritaire est passée
+                break
+        except sysv_ipc.BusyError:
+            print("En attente du passage du véhicule prioritaire...")
+            time.sleep(0.5)
+    time.sleep(3)
     priority_queue.value = -1
     print("Retour au cycle normal")
 
@@ -122,7 +140,7 @@ def lights(simul, feux,sock):
             try:
                 set_lights(states,feux,sock)
                 print(message)
-                time.sleep(5)
+                time.sleep(15)
             except InterruptedError:
                 handle_priority(feux,sock)
                 break
@@ -142,13 +160,15 @@ def coordinator(simul, feux, sock):
         if msg0==None:
             try:
                 msg0, _ = queues[active_feux[0]].receive(block=False)
-                messages.append((active_feux[0], int(msg0.decode())))
+                data0=pickle.loads(msg0)
+                messages.append((active_feux[0], data0[0]))
             except sysv_ipc.BusyError:
                 pass
         if msg1==None:
             try:
                 msg1, _ = queues[active_feux[1]].receive(block=False)
-                messages.append((active_feux[1], int(msg1.decode())))
+                data1=pickle.loads(msg1)
+                messages.append((active_feux[1], data1[0]))
             except sysv_ipc.BusyError:
                 pass
                   
@@ -196,17 +216,6 @@ def coordinator(simul, feux, sock):
             process_messages([0, 2], sock)
         elif feux[1] == State.Green and feux[3] == State.Green:
             process_messages([1, 3], sock)
-        
-        while priority_queue.value >= 0:
-            try:
-                mess, _ = queues[priority_queue.value].receive(block=False)
-                print(f"Message reçu sur la file {priority_queue.value}: {mess.decode()}")
-                msg_passage = ('passage', priority_queue.value, mess.decode())
-                sock.sendall(pickle.dumps(msg_passage))
-                time.sleep(1)
-            except sysv_ipc.BusyError:
-                pass
-
         time.sleep(0.1)
 
 

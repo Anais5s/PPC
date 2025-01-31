@@ -6,7 +6,7 @@ from multiprocessing import Process
 import sysv_ipc
 
 HOST = "127.0.0.1"  # Adresse du serveur
-PORT = 6666         # Doit être le même que le serveur
+PORT = 6665         # Doit être le même que le serveur
 
 # ---------- Settings ----------
 SCREEN_WIDTH, SCREEN_HEIGHT = 600, 600 # Dimensions de la fenêtre
@@ -216,7 +216,7 @@ if __name__ == "__main__":
                 running = False
 
         # Initialise les voitures sur les routes
-        if data[0]=='création': 
+        if data[0]=='creation_normal': 
             if data[1]==NORTH: # Route au nord
                 space = len(road_north.cars_in)*(CAR_WIDTH+SPACE_BETWEEN_CAR)
                 road_north.add_in(Car(north_points.x_in, north_points.y_in-space, north_points.speed, CAR_HEIGHT, CAR_WIDTH, NORTH))
