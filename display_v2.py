@@ -82,13 +82,14 @@ class TrafficLight:
         pygame.draw.circle(screen, self.state, (self.x + self.width // 2, self.y + self.height // 2), self.width // 2)
 
 class Car:
-    def __init__(self, x, y, speed, width, height, source):
+    def __init__(self, x, y, speed, width, height, color, source):
         self.x = x
         self.y = y
         self.speed = speed
         # Initialiser selon le point de départ
         self.width = width
         self.height = height
+        self.color = color
         self.source = source
         self.destination = -1
 
@@ -117,7 +118,7 @@ class Car:
         self.height = CAR_HEIGHT
     def draw(self, screen):
         """Dessiner la voiture."""
-        pygame.draw.rect(screen, Color.black, (self.x-self.width//2, self.y-self.height//2, self.width, self.height))
+        pygame.draw.rect(screen, self.color, (self.x-self.width//2, self.y-self.height//2, self.width, self.height))
 
 class Road:
     def __init__(self, x, y, width, height):
@@ -150,7 +151,7 @@ def reception(client_socket):
 
         except Exception as e:
             print(f"Erreur de réception : {e}")
-            break  # Sortir en cas d'erreu
+            break  # Sortir en cas d'erreur
 
     print("Connexion fermée par le serveur.")
     client_socket.close() # Ferme la connexion après l'envoi
@@ -219,16 +220,31 @@ if __name__ == "__main__":
         if data[0]=='creation_normal': 
             if data[1]==NORTH: # Route au nord
                 space = len(road_north.cars_in)*(CAR_WIDTH+SPACE_BETWEEN_CAR)
-                road_north.add_in(Car(north_points.x_in, north_points.y_in-space, north_points.speed, CAR_HEIGHT, CAR_WIDTH, NORTH))
-            elif data[1]==EAST: # Route au nord
+                road_north.add_in(Car(north_points.x_in, north_points.y_in-space, north_points.speed, CAR_HEIGHT, CAR_WIDTH, Color.black, NORTH))
+            elif data[1]==EAST: # Route à l'est
                 space = len(road_east.cars_in)*(CAR_WIDTH+SPACE_BETWEEN_CAR)
-                road_east.add_in(Car(east_points.x_in+space, east_points.y_in, east_points.speed, CAR_WIDTH, CAR_HEIGHT, EAST))
-            elif data[1]==SOUTH: # Route au nord
+                road_east.add_in(Car(east_points.x_in+space, east_points.y_in, east_points.speed, CAR_WIDTH, CAR_HEIGHT, Color.black, EAST))
+            elif data[1]==SOUTH: # Route au sud
                 space = len(road_south.cars_in)*(CAR_WIDTH+SPACE_BETWEEN_CAR)
-                road_south.add_in(Car(south_points.x_in, south_points.y_in+space, south_points.speed, CAR_HEIGHT, CAR_WIDTH, SOUTH))
-            elif data[1]==WEST: # Route au nord
+                road_south.add_in(Car(south_points.x_in, south_points.y_in+space, south_points.speed, CAR_HEIGHT, CAR_WIDTH, Color.black, SOUTH))
+            elif data[1]==WEST: # Route à l'ouest
                 space = len(road_west.cars_in)*(CAR_WIDTH+SPACE_BETWEEN_CAR)
-                road_west.add_in(Car(west_points.x_in-space, west_points.y_in, west_points.speed, CAR_WIDTH, CAR_HEIGHT, WEST))
+                road_west.add_in(Car(west_points.x_in-space, west_points.y_in, west_points.speed, CAR_WIDTH, CAR_HEIGHT, Color.black, WEST))
+
+        if data[0]=='creation_priorite': 
+            if data[1]==NORTH:
+                space = len(road_north.cars_in)*(CAR_WIDTH+SPACE_BETWEEN_CAR)
+                road_north.add_in(Car(north_points.x_in, north_points.y_in-space, north_points.speed, CAR_HEIGHT, CAR_WIDTH, Color.red, NORTH))
+            elif data[1]==EAST:
+                space = len(road_east.cars_in)*(CAR_WIDTH+SPACE_BETWEEN_CAR)
+                road_east.add_in(Car(east_points.x_in+space, east_points.y_in, east_points.speed, CAR_WIDTH, CAR_HEIGHT, Color.red, EAST))
+            elif data[1]==SOUTH:
+                space = len(road_south.cars_in)*(CAR_WIDTH+SPACE_BETWEEN_CAR)
+                road_south.add_in(Car(south_points.x_in, south_points.y_in+space, south_points.speed, CAR_HEIGHT, CAR_WIDTH, Color.red, SOUTH))
+            elif data[1]==WEST:
+                space = len(road_west.cars_in)*(CAR_WIDTH+SPACE_BETWEEN_CAR)
+                road_west.add_in(Car(west_points.x_in-space, west_points.y_in, west_points.speed, CAR_WIDTH, CAR_HEIGHT, Color.red, WEST))
+
 
         # Affichage
         SCREEN.fill(Color.whith) # Mise à jour du background
