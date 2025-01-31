@@ -4,11 +4,12 @@ import socket
 import pickle
 from multiprocessing import Process
 import sysv_ipc
-
-HOST = "127.0.0.1"  # Adresse du serveur
-PORT = 6665         # Doit être le même que le serveur
+import ctypes
 
 # ---------- Settings ----------
+HOST = "127.0.0.1"  # Adresse du serveur
+PORT = 6666         # Doit être le même que le serveur
+
 SCREEN_WIDTH, SCREEN_HEIGHT = 600, 600 # Dimensions de la fenêtre
 CAR_SPEED = 1
 CAR_WIDTH = 40
@@ -158,8 +159,10 @@ def reception(client_socket):
 
 # TESTS DISPLAY
 # data = ('feu', 1, 1)
-# data = ('création', 0)
+# data = ('creation_normal', 0)
+# data = ('creation_priorite', 0)
 # data = ('passage', 1, 2)
+# data = ('fin', 1, 2)
 
 if __name__ == "__main__":
     # Création du socket client
@@ -215,6 +218,10 @@ if __name__ == "__main__":
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
+
+        if data[0]=='fin':
+            ctypes.windll.user32.MessageBoxW(0, f"Fin de la simulation", "Projet PPC", 0)
+            running = False
 
         # Initialise les voitures sur les routes
         if data[0]=='creation_normal': 
