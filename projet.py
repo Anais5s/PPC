@@ -1,5 +1,5 @@
 import multiprocessing
-from multiprocessing.shared_memory import SharedMemory
+from multiprocessing.managers import SyncManager
 import random
 import time
 import signal
@@ -35,6 +35,11 @@ PRIORITY_RULES = {
     (3, 1): [0, 2],        
     (3, 2): [0, 1, 2],
 }
+
+class TrafficManager(SyncManager):
+    pass
+
+TrafficManager.register("Feux", dict)
 
 priority_queue = multiprocessing.Value("i", -1)
 
@@ -93,7 +98,7 @@ def handle_priority_signal(signum, frame):
     On ne met rien dedans car on veut juste interrompre le sleep'''
     raise InterruptedError
 
-def set_lights(states,sock):
+def set_lights(feux,states,sock):
     with lock:
         for i in range (4):
             feux[i] = 2
@@ -107,7 +112,7 @@ def set_lights(states,sock):
             sock.sendall(pickle.dumps(msg_feu))
             print(f"On envoie un feu {i} avec la state {feux[i]}")
 
-def handle_priority(sock):
+def handle_priority(feux,sock):
     priority_road = priority_queue.value
     with lock:
         for i in range (4):
@@ -129,7 +134,7 @@ def handle_priority(sock):
     priority_queue.value = -1
     print("Retour au cycle normal")
 
-def lights(simul,sock):
+def lights(feux,simul,sock):
     '''Enregistrement du gestionnaire de signal'''
     signal.signal(signal.SIGUSR1, handle_priority_signal)
         # Définition des états normaux des feux
@@ -140,17 +145,17 @@ def lights(simul,sock):
     while simul.value:
         for states, message in NORMAL_STATES:
             try:
-                set_lights(states,sock)
+                set_lights(feux,states,sock)
                 print(message)
                 time.sleep(15)
             except InterruptedError:
                 try:
-                    handle_priority(sock)
+                    handle_priority(feux,sock)
                 except InterruptedError:
-                    handle_priority(sock)
+                    handle_priority(feux,sock)
                 break
 
-def coordinator(simul, sock):
+def coordinator(simul, feux, sock):
     try:
         queues = [sysv_ipc.MessageQueue(base_cle + i) for i in range(4)]
     except sysv_ipc.ExistentialError:
@@ -224,11 +229,17 @@ def coordinator(simul, sock):
             process_messages([1, 3], sock)
         while priority_queue.value!=-1 and feux[priority_queue.value]==1:
             try:
+                mess, t = queues[priority_queue.value].receive(block=False,type=2)
+                print(f"Message prioritaire reçu sur la file {priority_queue.value}: {mess.decode()}")
+                msg_passage = ('passage_priorite', priority_queue.value, int(mess.decode()))
+                sock.sendall(pickle.dumps(msg_passage))
+                time.sleep(2)
+            except sysv_ipc.BusyError:
+                time.sleep(0.1)
+            try:
                 mess, t = queues[priority_queue.value].receive(block=False)
-                print(f"Message reçu sur la file {priority_queue.value}: {mess.decode()}")
-                msg_passage = ('passage', priority_queue.value, int(mess.decode()))
-                if feux[priority_queue.value]!=1:
-                    break
+                print(f"Message pas prioritaire reçu sur la file {priority_queue.value}: {mess.decode()}")
+                msg_passage = ('passage_normal', priority_queue.value, int(mess.decode()))
                 sock.sendall(pickle.dumps(msg_passage))
                 time.sleep(1)
             except sysv_ipc.BusyError:
@@ -239,14 +250,12 @@ def coordinator(simul, sock):
             mq.remove()
         except sysv_ipc.ExistentialError:
             pass
-    feux_shm.close()
-
 
   
 if __name__ == "__main__": # Faire des threads pour certaines tâches au lieu de process (peut-être trop overkill ?)
     simul=multiprocessing.Value("b",True)
-    feux_shm = SharedMemory(create=True, size=4 * 4)
-    feux = memoryview(feux_shm.buf)
+    manager = multiprocessing.Manager()
+    feux = manager.list([2, 2, 2, 2])
     for i in range(4):
         feux[i] = 2  # 2 pour rouge, 1 pour vert
     try:
@@ -261,12 +270,12 @@ if __name__ == "__main__": # Faire des threads pour certaines tâches au lieu de
         processes=[]
         pn = multiprocessing.Process(target=normal_traffic_gen, args=(simul,client_socket))
         processes.append(pn)
-        pl = multiprocessing.Process(target=lights, args=(simul,client_socket))
+        pl = multiprocessing.Process(target=lights, args=(feux,simul,client_socket))
         pl.start()
         lights_pid = pl.pid
         pp = multiprocessing.Process(target=priority_traffic_gen, args=(simul,lights_pid,priority_queue,client_socket))
         processes.append(pp)
-        pc = multiprocessing.Process(target=coordinator, args=(simul, client_socket))
+        pc = multiprocessing.Process(target=coordinator, args=(simul, feux, client_socket))
         processes.append(pc)
         for p in processes:
             p.start()
@@ -275,18 +284,15 @@ if __name__ == "__main__": # Faire des threads pour certaines tâches au lieu de
     except Exception as e:
         print(f"Il y a une erreur {e}")
     finally:
-        client_socket.send('fin'.encode())
         print("liberation des ressources")
         for p in processes:
             p.terminate()
             p.join()
         for mq in mqs:
             mq.remove()
+        client_socket.send('fin'.encode())
         try:
             client_socket.close()
         except Exception as e:
             print(f"Pas reussi a fermer la socket: {e}")
-        time.sleep(1)
-        del feux
-        feux_shm.close()
-        feux_shm.unlink()
+        manager.shutdown
