@@ -12,6 +12,7 @@ PORT = 6666         # Doit être le même que le serveur
 
 SCREEN_WIDTH, SCREEN_HEIGHT = 600, 600 # Dimensions de la fenêtre
 CAR_SPEED = 1
+CAR_SPEED_PRIORITY = 2
 CAR_WIDTH = 40
 CAR_HEIGHT = 20
 SPACE_BETWEEN_CAR = 10
@@ -32,7 +33,10 @@ WEST = 3
 class north_points:
     x_in = SCREEN_WIDTH//2-25
     y_in = 50
+    x_in_priority = SCREEN_WIDTH//2
+    y_in_priority = 50
     speed = CAR_SPEED
+    speed_priority = CAR_SPEED_PRIORITY
     stop_y_in = SCREEN_HEIGHT//2-100 # Point d'entrée du carrefour
     y_out = stop_y_in # Point de sortie du carrefour (considéré comme égal au point d'entrée)
     stop_y_out = y_in # Point de sortie du dessin (considéré comme égal au point d'entrée)
@@ -40,7 +44,10 @@ class north_points:
 class east_points:
     x_in = SCREEN_WIDTH-50
     y_in = SCREEN_HEIGHT//2-25
+    x_in_priority = SCREEN_WIDTH-50
+    y_in_priority = SCREEN_HEIGHT//2
     speed = CAR_SPEED
+    speed_priority = CAR_SPEED_PRIORITY
     stop_x_in = SCREEN_WIDTH//2+100
     x_out = stop_x_in
     stop_x_out = x_in
@@ -48,7 +55,10 @@ class east_points:
 class south_points:
     x_in = SCREEN_WIDTH//2+25
     y_in = SCREEN_HEIGHT-50
+    x_in_priority = SCREEN_WIDTH//2
+    y_in_priority = SCREEN_HEIGHT-50
     speed = CAR_SPEED
+    speed_priority = CAR_SPEED_PRIORITY
     stop_y_in = SCREEN_HEIGHT//2+100
     y_out = stop_y_in
     stop_y_out = y_in
@@ -56,7 +66,10 @@ class south_points:
 class west_points:
     x_in = 50
     y_in = SCREEN_HEIGHT//2+25
+    x_in_priority = 50
+    y_in_priority = SCREEN_HEIGHT//2
     speed = CAR_SPEED
+    speed_priority = CAR_SPEED_PRIORITY
     stop_x_in = SCREEN_WIDTH//2-100
     x_out = stop_x_in
     stop_x_out = x_in
@@ -83,7 +96,7 @@ class TrafficLight:
         pygame.draw.circle(screen, self.state, (self.x + self.width // 2, self.y + self.height // 2), self.width // 2)
 
 class Car:
-    def __init__(self, x, y, speed, width, height, color, source):
+    def __init__(self, x, y, speed, width, height, color, source, priority):
         self.x = x
         self.y = y
         self.speed = speed
@@ -93,6 +106,7 @@ class Car:
         self.color = color
         self.source = source
         self.destination = -1
+        self.priority = priority
 
     def move_up(self):
         """Déplacer la voiture en haut"""
@@ -134,6 +148,9 @@ class Road:
     def add_in(self, car):
         self.cars_in.append(car)
 
+    def add_in_priority(self, car):
+        self.cars_in.insert(0, car) # On ajoute à gauche de la liste (le véhicule prioritaire dépasse les voitures)
+
     def add_out(self, car):
         self.cars_out.append(car)
 
@@ -156,13 +173,15 @@ def reception(client_socket):
 
     print("Connexion fermée par le serveur.")
     client_socket.close() # Ferme la connexion après l'envoi
+    sys.exit()
 
 # TESTS DISPLAY
 # data = ('feu', 1, 1)
 # data = ('creation_normal', 0)
 # data = ('creation_priorite', 0)
 # data = ('passage', 1, 2)
-# data = ('fin', 1, 2)
+# data = ('passage_priorite', 0)
+# data = ('fin')
 
 if __name__ == "__main__":
     # Création du socket client
@@ -220,37 +239,37 @@ if __name__ == "__main__":
                 running = False
 
         if data[0]=='fin':
-            ctypes.windll.user32.MessageBoxW(0, f"Fin de la simulation", "Projet PPC", 0)
+            #ctypes.windll.user32.MessageBoxW(0, f"Fin de la simulation", "Projet PPC", 0)
             running = False
 
         # Initialise les voitures sur les routes
         if data[0]=='creation_normal': 
             if data[1]==NORTH: # Route au nord
                 space = len(road_north.cars_in)*(CAR_WIDTH+SPACE_BETWEEN_CAR)
-                road_north.add_in(Car(north_points.x_in, north_points.y_in-space, north_points.speed, CAR_HEIGHT, CAR_WIDTH, Color.black, NORTH))
+                road_north.add_in(Car(north_points.x_in, north_points.y_in-space, north_points.speed, CAR_HEIGHT, CAR_WIDTH, Color.black, NORTH, False))
             elif data[1]==EAST: # Route à l'est
                 space = len(road_east.cars_in)*(CAR_WIDTH+SPACE_BETWEEN_CAR)
-                road_east.add_in(Car(east_points.x_in+space, east_points.y_in, east_points.speed, CAR_WIDTH, CAR_HEIGHT, Color.black, EAST))
+                road_east.add_in(Car(east_points.x_in+space, east_points.y_in, east_points.speed, CAR_WIDTH, CAR_HEIGHT, Color.black, EAST, False))
             elif data[1]==SOUTH: # Route au sud
                 space = len(road_south.cars_in)*(CAR_WIDTH+SPACE_BETWEEN_CAR)
-                road_south.add_in(Car(south_points.x_in, south_points.y_in+space, south_points.speed, CAR_HEIGHT, CAR_WIDTH, Color.black, SOUTH))
+                road_south.add_in(Car(south_points.x_in, south_points.y_in+space, south_points.speed, CAR_HEIGHT, CAR_WIDTH, Color.black, SOUTH, False))
             elif data[1]==WEST: # Route à l'ouest
                 space = len(road_west.cars_in)*(CAR_WIDTH+SPACE_BETWEEN_CAR)
-                road_west.add_in(Car(west_points.x_in-space, west_points.y_in, west_points.speed, CAR_WIDTH, CAR_HEIGHT, Color.black, WEST))
+                road_west.add_in(Car(west_points.x_in-space, west_points.y_in, west_points.speed, CAR_WIDTH, CAR_HEIGHT, Color.black, WEST, False))
 
         if data[0]=='creation_priorite': 
             if data[1]==NORTH:
                 space = len(road_north.cars_in)*(CAR_WIDTH+SPACE_BETWEEN_CAR)
-                road_north.add_in(Car(north_points.x_in, north_points.y_in-space, north_points.speed, CAR_HEIGHT, CAR_WIDTH, Color.red, NORTH))
+                road_north.add_in_priority(Car(north_points.x_in_priority, north_points.y_in_priority-space, north_points.speed_priority, CAR_HEIGHT, CAR_WIDTH, Color.red, NORTH, True))
             elif data[1]==EAST:
                 space = len(road_east.cars_in)*(CAR_WIDTH+SPACE_BETWEEN_CAR)
-                road_east.add_in(Car(east_points.x_in+space, east_points.y_in, east_points.speed, CAR_WIDTH, CAR_HEIGHT, Color.red, EAST))
+                road_east.add_in(Car(east_points.x_in_priority+space, east_points.y_in_priority, east_points.speed_priority, CAR_WIDTH, CAR_HEIGHT, Color.red, EAST, True))
             elif data[1]==SOUTH:
                 space = len(road_south.cars_in)*(CAR_WIDTH+SPACE_BETWEEN_CAR)
-                road_south.add_in(Car(south_points.x_in, south_points.y_in+space, south_points.speed, CAR_HEIGHT, CAR_WIDTH, Color.red, SOUTH))
+                road_south.add_in(Car(south_points.x_in_priority, south_points.y_in_priority+space, south_points.speed_priority, CAR_HEIGHT, CAR_WIDTH, Color.red, SOUTH, True))
             elif data[1]==WEST:
                 space = len(road_west.cars_in)*(CAR_WIDTH+SPACE_BETWEEN_CAR)
-                road_west.add_in(Car(west_points.x_in-space, west_points.y_in, west_points.speed, CAR_WIDTH, CAR_HEIGHT, Color.red, WEST))
+                road_west.add_in(Car(west_points.x_in_priority-space, west_points.y_in_priority, west_points.speed_priority, CAR_WIDTH, CAR_HEIGHT, Color.red, WEST, True))
 
 
         # Affichage
@@ -287,29 +306,41 @@ if __name__ == "__main__":
                 Feux[position_feu].state=Color.red
 
         # Mise à jour des voitures
+        space = 0
         for i in range(len(road_north.cars_in)):
             cars = road_north.cars_in[i]
-            space = i*(CAR_WIDTH+SPACE_BETWEEN_CAR)
-            if cars.y < north_points.stop_y_in-space-1:
-                cars.move_down()
+            if cars.priority:
+                if cars.y < north_points.stop_y_in: cars.move_down()
+            else:
+                space += (CAR_WIDTH+SPACE_BETWEEN_CAR)
+                if cars.y < north_points.stop_y_in-space: cars.move_down()
 
+        space = 0
         for i in range(len(road_east.cars_in)):
             cars = road_east.cars_in[i]
-            space = i*(CAR_WIDTH+SPACE_BETWEEN_CAR)
-            if cars.x > east_points.stop_x_in+space:
-                cars.move_left()
+            if cars.priority:
+                if cars.x > east_points.stop_x_in: cars.move_left()
+            else:
+                space += (CAR_WIDTH+SPACE_BETWEEN_CAR)
+                if cars.x > east_points.stop_x_in+space: cars.move_left()
 
+        space = 0
         for i in range(len(road_south.cars_in)):
             cars = road_south.cars_in[i]
-            space = i*(CAR_WIDTH+SPACE_BETWEEN_CAR)
-            if cars.y > south_points.stop_y_in+space:
-                cars.move_up()
+            if cars.priority:
+                if cars.y > south_points.stop_y_in: cars.move_up()
+            else:
+                space += (CAR_WIDTH+SPACE_BETWEEN_CAR)
+                if cars.y > south_points.stop_y_in+space: cars.move_up()
 
+        space = 0
         for i in range(len(road_west.cars_in)):
             cars = road_west.cars_in[i]
-            space = i*(CAR_WIDTH+SPACE_BETWEEN_CAR)
-            if cars.x < west_points.stop_x_in-space:
-                cars.move_right()
+            if cars.priority:
+                if cars.x < west_points.stop_x_in-space: cars.move_right()
+            else:
+                space = i*(CAR_WIDTH+SPACE_BETWEEN_CAR)
+                if cars.x < west_points.stop_x_in-space: cars.move_right()
 
         for cars in road_north.cars_out:
             cars.move_up()
@@ -331,7 +362,7 @@ if __name__ == "__main__":
             if cars.x < west_points.stop_x_out:
                 road_west.cars_out.remove(cars)
 
-        if data[0]=='passage': # !!! Ne pas oublier de retirer "and len(Crossroad)<1" (uniquement pour les tests) !!!
+        if data[0]=='passage':
             if data[1]==NORTH and len(road_north.cars_in)!=0:  # La dernière condition est inutile car ce n'est pas censé arriver
                 cars = road_north.cars_in.pop(0) # Sélectionne la première voiture de la file
                 cars.destination = data[2]
