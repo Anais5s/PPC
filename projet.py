@@ -151,26 +151,23 @@ def coordinator(feux, sock):
         print("Cannot connect to message queues, terminating.")
         sys.exit(1)
 
-    message_queue = []  # File d'attente locale pour stocker tous les messages
-
     def process_messages(active_feux, sock):
-        nonlocal message_queue  
         # Lire TOUTES les voitures en attente et stocker temporairement
         temp_queue = []
         for feu in active_feux:
-            receive=False
             try:
-                msg, msg_type = queues[feu].receive(block=False,type=3)
+                msg, msg_type = queues[feu].receive(block=False, type=2)
                 temp_queue.append((feu, int(msg.decode()), msg_type))
-                receive=True
             except sysv_ipc.BusyError:
-                pass  
-            if receive==False:
                 try:
-                    msg, msg_type = queues[feu].receive(block=False)
+                    msg, msg_type = queues[feu].receive(block=False, type=3)
                     temp_queue.append((feu, int(msg.decode()), msg_type))
                 except sysv_ipc.BusyError:
-                    pass  
+                    try:    
+                        msg, msg_type = queues[feu].receive(block=False)
+                        temp_queue.append((feu, int(msg.decode()), msg_type))
+                    except sysv_ipc.BusyError:
+                        pass  
 
         # Analyser les nouveaux messages récupérés
         if len(temp_queue) >= 2:
@@ -182,6 +179,7 @@ def coordinator(feux, sock):
                 if feux[source2] == 1:
                     sock.sendall(pickle.dumps(('passage', source2, dest2)))
                     time.sleep(1)
+                    queues[source1].send(str(dest1).encode(), type=3)
                     return  
 
             elif dest2 == (source2 + 1) % 3 and dest1 != (source1 + 1) % 3:
@@ -189,6 +187,7 @@ def coordinator(feux, sock):
                 if feux[source1] == 1:
                     sock.sendall(pickle.dumps(('passage', source1, dest1)))
                     time.sleep(1)
+                    queues[source2].send(str(dest2).encode(), type=3)
                     return  
 
             elif dest2 != (source2 + 1) % 3 and dest1 != (source1 + 1) % 3:
@@ -205,21 +204,21 @@ def coordinator(feux, sock):
                 if feux[source] == 1:
                     sock.sendall(pickle.dumps(('passage', source, dest)))
                     time.sleep(1)
+                    if source==source1:
+                        queues[source1].send(str(dest1).encode(), type=3)
+                    else:
+                        queues[source2].send(str(dest2).encode(), type=3)
                     return  
 
-            # Remettre en file d'attente les messages non traités
-            message_queue.append((source1, dest1, type1))
-            message_queue.append((source2, dest2, type2))
-            # Remettre en priorité les messages non traités
-            while message_queue:
-                feu, dest, msg_type = message_queue.pop(0)
-                queues[feu].send(str(dest).encode(), type=3)
 
         elif len(temp_queue) == 1:
             source, dest, msg_type = temp_queue.pop(0)
             print(f"Message reçu sur la file {source}: {dest}")
             sock.sendall(pickle.dumps(('passage', source, dest)))
-            time.sleep(1)
+            if msg_type==2:
+                time.sleep(2)
+            else:
+                time.sleep(1)
         else:
             time.sleep(0.1)
 
@@ -231,19 +230,7 @@ def coordinator(feux, sock):
                 process_messages([1, 3], sock)
             while priority_queue.value!=-1 and feux[priority_queue.value]==1:
                 try:
-                    mess, t = queues[priority_queue.value].receive(block=False,type=2)
-                    print(f"Message prioritaire reçu sur la file {priority_queue.value}: {mess.decode()}")
-                    msg_passage = ('passage_priorite', priority_queue.value, int(mess.decode()))
-                    sock.sendall(pickle.dumps(msg_passage))
-                    time.sleep(2)
-                except sysv_ipc.BusyError:
-                    time.sleep(0.1)
-                try:
-                    mess, t = queues[priority_queue.value].receive(block=False)
-                    print(f"Message pas prioritaire reçu sur la file {priority_queue.value}: {mess.decode()}")
-                    msg_passage = ('passage', priority_queue.value, int(mess.decode()))
-                    sock.sendall(pickle.dumps(msg_passage))
-                    time.sleep(1)
+                    process_messages([priority_queue.value], sock)
                 except sysv_ipc.BusyError:
                     time.sleep(0.1)
             time.sleep(0.1)
