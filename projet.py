@@ -55,7 +55,7 @@ def priority_traffic_gen(lights_pid, priority_queue, sock):
     For each generated vehicle, it chooses source and destination road sections randomly or according to some predefined criteria.'''
     while True:
         try:
-            time.sleep(random.uniform(20,30))
+            time.sleep(random.uniform(20,40))
             source=random.randint(0,3)
             dest=random.choice([x for x in range(0, 4) if x != source])
             try:
@@ -152,7 +152,6 @@ def coordinator(feux, sock):
         sys.exit(1)
 
     def process_messages(active_feux, sock):
-        # Lire TOUTES les voitures en attente et stocker temporairement
         temp_queue = []
         for feu in active_feux:
             try:
@@ -173,29 +172,31 @@ def coordinator(feux, sock):
         if len(temp_queue) >= 2:
             source1, dest1, type1 = temp_queue.pop(0)
             source2, dest2, type2 = temp_queue.pop(0)
+            tourne_gauche_1 = (dest1 == (source1 + 1) % 4)
+            tourne_gauche_2 = (dest2 == (source2 + 1) % 4)
 
-            if dest1 == (source1 + 1) % 3 and dest2 != (source2 + 1) % 3:
-                print(f"Message reçu sur la file {source2}: {dest2}")
-                if feux[source2] == 1:
-                    sock.sendall(pickle.dumps(('passage', source2, dest2)))
-                    time.sleep(1)
-                    queues[source1].send(str(dest1).encode(), type=3)
-                    return  
-
-            elif dest2 == (source2 + 1) % 3 and dest1 != (source1 + 1) % 3:
-                print(f"Message reçu sur la file {source1}: {dest1}")
-                if feux[source1] == 1:
-                    sock.sendall(pickle.dumps(('passage', source1, dest1)))
-                    time.sleep(1)
-                    queues[source2].send(str(dest2).encode(), type=3)
-                    return  
-
-            elif dest2 != (source2 + 1) % 3 and dest1 != (source1 + 1) % 3:
+            if not tourne_gauche_1 and not tourne_gauche_2:
                 print(f"Les deux voitures peuvent passer")
                 if feux[source1] == 1 and feux[source2] == 1:
                     sock.sendall(pickle.dumps(('passage', source1, dest1)))
                     sock.sendall(pickle.dumps(('passage', source2, dest2)))
-                    time.sleep(1)
+                    time.sleep(1.5)
+                    return  
+            
+            elif tourne_gauche_1 and not tourne_gauche_2:
+                print(f"Message reçu sur la file {source2}: {dest2}")
+                if feux[source2] == 1:
+                    sock.sendall(pickle.dumps(('passage', source2, dest2)))
+                    time.sleep(1.5)
+                    queues[source1].send(str(dest1).encode(), type=3)
+                    return  
+
+            elif tourne_gauche_2 and not tourne_gauche_1:
+                print(f"Message reçu sur la file {source1}: {dest1}")
+                if feux[source1] == 1:
+                    sock.sendall(pickle.dumps(('passage', source1, dest1)))
+                    time.sleep(1.5)
+                    queues[source2].send(str(dest2).encode(), type=3)
                     return  
 
             else:
@@ -203,11 +204,11 @@ def coordinator(feux, sock):
                 source, dest, _ = random.choice([(source1, dest1, type1), (source2, dest2, type2)])
                 if feux[source] == 1:
                     sock.sendall(pickle.dumps(('passage', source, dest)))
-                    time.sleep(1)
+                    time.sleep(1.5)
                     if source==source1:
-                        queues[source1].send(str(dest1).encode(), type=3)
-                    else:
                         queues[source2].send(str(dest2).encode(), type=3)
+                    else:
+                        queues[source1].send(str(dest1).encode(), type=3)
                     return  
 
 
@@ -217,8 +218,9 @@ def coordinator(feux, sock):
             sock.sendall(pickle.dumps(('passage', source, dest)))
             if msg_type==2:
                 time.sleep(2)
+                print("C'etait une voiture prioritaire")
             else:
-                time.sleep(1)
+                time.sleep(1.5)
         else:
             time.sleep(0.1)
 
@@ -250,7 +252,7 @@ def stop_processes(signum, frame, processes):
     sys.exit(0) 
 
 if __name__ == "__main__": # Faire des threads pour certaines tâches au lieu de process (peut-être trop overkill ?)
-    signal.signal(signal.SIGINT, signal.SIG_IGN)
+    signal.signal(signal.SIGINT, signal.SIG_IGN) 
     signal.signal(signal.SIGINT, lambda signum, frame: stop_processes(signum, frame, processes))
     manager = multiprocessing.Manager()
     feux = manager.list([2, 2, 2, 2])
@@ -258,6 +260,7 @@ if __name__ == "__main__": # Faire des threads pour certaines tâches au lieu de
         feux[i] = 2  # 2 pour rouge, 1 pour vert
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server_socket:
+            server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1) #pour que le socket soit réutilisable direct apres
             server_socket.bind((HOST, PORT))
             server_socket.listen(2)
             print("En attente d'une connexion client...")
