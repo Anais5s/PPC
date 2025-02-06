@@ -1,7 +1,7 @@
 import pygame
 import sys
+import threading
 import socket
-import select
 import pickle
 import ctypes
 
@@ -38,7 +38,7 @@ class north_points:
     speed_priority = CAR_SPEED_PRIORITY
     stop_y_in = SCREEN_HEIGHT//2-100 # Point d'entrée du carrefour
     y_out = stop_y_in # Point de sortie du carrefour (considéré comme égal au point d'entrée)
-    stop_y_out = y_in # Point de sortie du dessin (considéré comme égal au point d'entrée)
+    stop_y_out = -CAR_HEIGHT
 
 class east_points:
     x_in = SCREEN_WIDTH-50
@@ -49,7 +49,7 @@ class east_points:
     speed_priority = CAR_SPEED_PRIORITY
     stop_x_in = SCREEN_WIDTH//2+100
     x_out = stop_x_in
-    stop_x_out = x_in
+    stop_x_out = SCREEN_WIDTH+CAR_WIDTH
 
 class south_points:
     x_in = SCREEN_WIDTH//2+25
@@ -60,7 +60,7 @@ class south_points:
     speed_priority = CAR_SPEED_PRIORITY
     stop_y_in = SCREEN_HEIGHT//2+100
     y_out = stop_y_in
-    stop_y_out = y_in
+    stop_y_out = SCREEN_HEIGHT+CAR_HEIGHT
 
 class west_points:
     x_in = 50
@@ -71,7 +71,7 @@ class west_points:
     speed_priority = CAR_SPEED_PRIORITY
     stop_x_in = SCREEN_WIDTH//2-100
     x_out = stop_x_in
-    stop_x_out = x_in
+    stop_x_out = -CAR_WIDTH
 
 class center_points:
     x = SCREEN_WIDTH//2
@@ -99,7 +99,6 @@ class Car:
         self.x = x
         self.y = y
         self.speed = speed
-        # Initialiser selon le point de départ
         self.width = width
         self.height = height
         self.color = color
@@ -156,16 +155,37 @@ class Road:
     def draw(self, screen):
         pygame.draw.rect(screen, self.color, (self.x-self.width//2, self.y-self.height//2, self.width, self.height))
 
+def reception(client_socket, TCP_data):
+    while True:
+        try:
+            serial_data = client_socket.recv(1024)  # Taille maximale des données reçues
+            
+            if not serial_data:
+                break
+            
+            TCP_data += [(pickle.loads(serial_data))]  # Désérialisation du message reçu
+            print(f"Message reçu du serveur: {TCP_data}")
+
+        except Exception as e:
+            print(f"Erreur de réception : {e}")
+            break
+
+    print("Connexion fermée par le serveur.")
+    client_socket.close()
+
 if __name__ == "__main__":
     # Création du socket client
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client_socket:
         try:
             client_socket.connect((HOST, PORT))
-            client_socket.setblocking(False) # Mode non bloquant
             print("Client connecté")
         except Exception as e:
             print(f"Connexion au serveur échouée : {e}")
             client_socket.close()
+
+        TCP_data = []
+        thread = threading.Thread(target=reception, args=(client_socket, TCP_data)) # Utilisation d'un thread pour la réception des données en TCP
+        thread.start() 
 
         # Initialisation de Pygame
         pygame.init() 
@@ -188,31 +208,10 @@ if __name__ == "__main__":
 
         # Boucle principale pour l'affichage
         running = True
-        while running: 
-            # Récupération des données TCP
+        while running:
             data = (None, None, None) # Réinitialisation de data
-
-            try:
-                # Vérifie si des données sont disponibles
-                readable, _, _ = select.select([client_socket], [], [], 0.1)  # Timeout de 100 ms
-
-                if readable:
-                    data = client_socket.recv(1024)  # Taille maximale des données reçues
-
-                    if not data:
-                        print("Le serveur a fermé la connexion.")
-                        break
-
-                    message = pickle.loads(data)  # Désérialisation du message reçu
-                    print(f"Message reçu: {message}")
-                    print("-" * 8)
-
-            except BlockingIOError: # Aucune donnée disponible
-                pass
-
-            except Exception as e:
-                print(f"Erreur de réception : {e}")
-                break
+            if len(TCP_data) != 0:  # Récupère les données TCP
+                data =TCP_data.pop(0)
 
             # Si l'utilisateur quitte l'interface
             for event in pygame.event.get():
@@ -220,7 +219,7 @@ if __name__ == "__main__":
                     running = False
 
             if data[0]=='fin':
-                #ctypes.windll.user32.MessageBoxW(0, f"Fin de la simulation", "Projet PPC", 0)
+                ctypes.windll.user32.MessageBoxW(0, f"Fin de la simulation", "Projet PPC", 0)
                 running = False
 
             # Initialise les voitures sur les routes
@@ -251,19 +250,6 @@ if __name__ == "__main__":
                 elif data[1]==WEST:
                     space = len(road_west.cars_in)*(CAR_WIDTH+SPACE_BETWEEN_CAR)
                     road_west.add_in_priority(Car(west_points.x_in_priority-space, west_points.y_in_priority, west_points.speed_priority, CAR_WIDTH, CAR_HEIGHT, Color.red, WEST, True))
-        if data[0]=='creation_priorite': 
-            if data[1]==NORTH:
-                space = len(road_north.cars_in)*(CAR_WIDTH+SPACE_BETWEEN_CAR)
-                road_north.add_in_priority(Car(north_points.x_in_priority, north_points.y_in_priority-space, north_points.speed_priority, CAR_HEIGHT, CAR_WIDTH, Color.red, NORTH, True))
-            elif data[1]==EAST:
-                space = len(road_east.cars_in)*(CAR_WIDTH+SPACE_BETWEEN_CAR)
-                road_east.add_in_priority(Car(east_points.x_in_priority+space, east_points.y_in_priority, east_points.speed_priority, CAR_WIDTH, CAR_HEIGHT, Color.red, EAST, True))
-            elif data[1]==SOUTH:
-                space = len(road_south.cars_in)*(CAR_WIDTH+SPACE_BETWEEN_CAR)
-                road_south.add_in_priority(Car(south_points.x_in_priority, south_points.y_in_priority+space, south_points.speed_priority, CAR_HEIGHT, CAR_WIDTH, Color.red, SOUTH, True))
-            elif data[1]==WEST:
-                space = len(road_west.cars_in)*(CAR_WIDTH+SPACE_BETWEEN_CAR)
-                road_west.add_in_priority(Car(west_points.x_in_priority-space, west_points.y_in_priority, west_points.speed_priority, CAR_WIDTH, CAR_HEIGHT, Color.red, WEST, True))
 
 
             # Affichage
@@ -333,7 +319,7 @@ if __name__ == "__main__":
                 if cars.priority:
                     if cars.x < west_points.stop_x_in-space: cars.move_right()
                 else:
-                    space = i*(CAR_WIDTH+SPACE_BETWEEN_CAR)
+                    space += (CAR_WIDTH+SPACE_BETWEEN_CAR)
                     if cars.x < west_points.stop_x_in-space: cars.move_right()
 
             for cars in road_north.cars_out:
@@ -456,6 +442,7 @@ if __name__ == "__main__":
                             if cars.y < north_points.y_out:
                                 road_north.cars_out.append(Crossroad.pop(Crossroad.index(cars)))
 
-    pygame.quit()
-    client_socket.close() # Inutile avec le gestionnaire de contexte
-    sys.exit()
+        pygame.quit()
+        client_socket.close() # Inutile avec le gestionnaire de contexte
+        thread.join()
+        sys.exit()

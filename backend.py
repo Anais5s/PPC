@@ -291,7 +291,7 @@ if __name__ == "__main__": # Faire des threads pour certaines tâches au lieu de
         for mq in mqs:
             mq.remove()
         try:
-            client_socket.send('fin'.encode())
+            client_socket.sendall(pickle.dumps(('fin', 0)))
         except Exception as e:
             print(f"Erreur lors de l'envoi du message de fin : {e}")
         try:
