@@ -263,13 +263,13 @@ if __name__ == "__main__":
                 road_north.add_in_priority(Car(north_points.x_in_priority, north_points.y_in_priority-space, north_points.speed_priority, CAR_HEIGHT, CAR_WIDTH, Color.red, NORTH, True))
             elif data[1]==EAST:
                 space = len(road_east.cars_in)*(CAR_WIDTH+SPACE_BETWEEN_CAR)
-                road_east.add_in(Car(east_points.x_in_priority+space, east_points.y_in_priority, east_points.speed_priority, CAR_WIDTH, CAR_HEIGHT, Color.red, EAST, True))
+                road_east.add_in_priority(Car(east_points.x_in_priority+space, east_points.y_in_priority, east_points.speed_priority, CAR_WIDTH, CAR_HEIGHT, Color.red, EAST, True))
             elif data[1]==SOUTH:
                 space = len(road_south.cars_in)*(CAR_WIDTH+SPACE_BETWEEN_CAR)
-                road_south.add_in(Car(south_points.x_in_priority, south_points.y_in_priority+space, south_points.speed_priority, CAR_HEIGHT, CAR_WIDTH, Color.red, SOUTH, True))
+                road_south.add_in_priority(Car(south_points.x_in_priority, south_points.y_in_priority+space, south_points.speed_priority, CAR_HEIGHT, CAR_WIDTH, Color.red, SOUTH, True))
             elif data[1]==WEST:
                 space = len(road_west.cars_in)*(CAR_WIDTH+SPACE_BETWEEN_CAR)
-                road_west.add_in(Car(west_points.x_in_priority-space, west_points.y_in_priority, west_points.speed_priority, CAR_WIDTH, CAR_HEIGHT, Color.red, WEST, True))
+                road_west.add_in_priority(Car(west_points.x_in_priority-space, west_points.y_in_priority, west_points.speed_priority, CAR_WIDTH, CAR_HEIGHT, Color.red, WEST, True))
 
 
         # Affichage

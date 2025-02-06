@@ -55,7 +55,7 @@ def priority_traffic_gen(lights_pid, priority_queue, sock):
     For each generated vehicle, it chooses source and destination road sections randomly or according to some predefined criteria.'''
     while True:
         try:
-            time.sleep(random.uniform(20,30))
+            time.sleep(random.uniform(20,40))
             source=random.randint(0,3)
             dest=random.choice([x for x in range(0, 4) if x != source])
             try:
@@ -178,7 +178,7 @@ def coordinator(feux, sock):
                 print(f"Message reçu sur la file {source2}: {dest2}")
                 if feux[source2] == 1:
                     sock.sendall(pickle.dumps(('passage', source2, dest2)))
-                    time.sleep(1)
+                    time.sleep(1.5)
                     queues[source1].send(str(dest1).encode(), type=3)
                     return  
 
@@ -186,7 +186,7 @@ def coordinator(feux, sock):
                 print(f"Message reçu sur la file {source1}: {dest1}")
                 if feux[source1] == 1:
                     sock.sendall(pickle.dumps(('passage', source1, dest1)))
-                    time.sleep(1)
+                    time.sleep(1.5)
                     queues[source2].send(str(dest2).encode(), type=3)
                     return  
 
@@ -195,7 +195,7 @@ def coordinator(feux, sock):
                 if feux[source1] == 1 and feux[source2] == 1:
                     sock.sendall(pickle.dumps(('passage', source1, dest1)))
                     sock.sendall(pickle.dumps(('passage', source2, dest2)))
-                    time.sleep(1)
+                    time.sleep(1.5)
                     return  
 
             else:
@@ -203,7 +203,7 @@ def coordinator(feux, sock):
                 source, dest, _ = random.choice([(source1, dest1, type1), (source2, dest2, type2)])
                 if feux[source] == 1:
                     sock.sendall(pickle.dumps(('passage', source, dest)))
-                    time.sleep(1)
+                    time.sleep(1.5)
                     if source==source1:
                         queues[source1].send(str(dest1).encode(), type=3)
                     else:
@@ -217,8 +217,9 @@ def coordinator(feux, sock):
             sock.sendall(pickle.dumps(('passage', source, dest)))
             if msg_type==2:
                 time.sleep(2)
+                print("C'etait une voiture prioritaire")
             else:
-                time.sleep(1)
+                time.sleep(1.5)
         else:
             time.sleep(0.1)
 
@@ -258,6 +259,7 @@ if __name__ == "__main__": # Faire des threads pour certaines tâches au lieu de
         feux[i] = 2  # 2 pour rouge, 1 pour vert
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server_socket:
+            server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             server_socket.bind((HOST, PORT))
             server_socket.listen(2)
             print("En attente d'une connexion client...")
